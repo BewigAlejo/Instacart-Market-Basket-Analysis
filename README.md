@@ -28,7 +28,7 @@ El foco está en dominar la preparación, el análisis y la comunicación de res
 | **Power BI** | Tecnología principal a incorporar: Power Query, modelo estrella, relaciones, DAX básico, KPIs, filtros y diseño con una narrativa ejecutiva. |
 | **Git / GitHub** | Versionado del README, queries, notebooks, capturas del dashboard y memo de recomendaciones. |
 
-**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). El análisis SQL, el EDA, el dashboard y las recomendaciones forman parte de las siguientes etapas.
+**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). La exploración SQL comenzó con el catálogo de productos en [sql/product_dimension.py](sql/product_dimension.py). Los demás análisis SQL, el EDA, el dashboard y las recomendaciones continúan pendientes.
 
 ## Dataset y alcance del análisis
 
@@ -184,3 +184,40 @@ Se encontraron 1.258 productos asociados simultáneamente al departamento `missi
 ### Resultado de esta etapa
 
 Los controles documentados no justifican limpieza correctiva. Se preservaron los nulos estructurales, las categorías `missing` y los registros válidos de tamaño inusual. Las tasas de recompra observadas son descripciones iniciales de líneas de producto, no conclusiones sobre la proporción de usuarios recurrentes ni sobre el impacto de una acción comercial.
+
+## Análisis SQL
+
+La carpeta [sql](sql/) organiza las consultas por tema de negocio. Actualmente utiliza archivos Python para ejecutar SQL con **DuckDB**, que permite consultar archivos CSV sin configurar un servidor de base de datos.
+
+### Organización de la carpeta
+
+| Archivo | Propósito | Estado |
+| --- | --- | --- |
+| [product_dimension.py](sql/product_dimension.py) | Explorar el tamaño del catálogo y su distribución por departamento y pasillo. | Implementado. |
+| [reorder_analysis.py](sql/reorder_analysis.py) | Análisis previsto de recompra de productos y categorías. | Pendiente; archivo vacío. |
+| [customer_behavior.py](sql/customer_behavior.py) | Análisis previsto del comportamiento de compra de los usuarios. | Pendiente; archivo vacío. |
+| [temporal_analysis.py](sql/temporal_analysis.py) | Análisis previsto de patrones temporales de los pedidos. | Pendiente; archivo vacío. |
+| [cross_sell.py](sql/cross_sell.py) | Análisis previsto de productos comprados juntos y oportunidades de venta cruzada. | Pendiente; archivo vacío. |
+
+### Exploración del catálogo de productos
+
+`product_dimension.py` lee `data/processed/dim_products.csv` y crea una vista temporal de consulta llamada `dim_products`. Sobre ella ejecuta tres consultas:
+
+- **Cantidad total de productos:** cuenta las filas de la dimensión con `COUNT(*)`.
+- **Productos por departamento:** agrupa por `department` y ordena los departamentos de mayor a menor cantidad de productos.
+- **Productos por pasillo:** agrupa por `aisle` y muestra los 20 pasillos con más productos en el catálogo.
+
+Estas consultas describen la composición del catálogo. Sus conteos no representan ventas, unidades compradas ni tasas de recompra. Los resultados se muestran en la terminal; el script no modifica los CSV ni exporta tablas nuevas.
+
+### Cómo ejecutar las consultas
+
+El script requiere que exista `data/processed/dim_products.csv`, con una fila por producto y las columnas descriptivas `department` y `aisle`. Este archivo procesado está excluido de Git y debe prepararse previamente a partir de `products`, `departments` y `aisles`; el script SQL no realiza esa preparación.
+
+Desde la **raíz del repositorio**, instalá DuckDB y ejecutá:
+
+```bash
+pip install duckdb
+python sql/product_dimension.py
+```
+
+Es importante ejecutar el comando desde la raíz porque la ruta `data/processed/dim_products.csv` se resuelve respecto del directorio de trabajo. Los restantes scripts se completarán a medida que avance el análisis.
