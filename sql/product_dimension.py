@@ -1,19 +1,52 @@
 import duckdb
 
-duckdb.sql("""
-    CREATE VIEW dim_products AS
+con = duckdb.connect()
+
+# Tablas base
+con.execute("""
+    CREATE OR REPLACE VIEW products AS
     SELECT *
-    FROM read_csv_auto('data/processed/dim_products.csv')
+    FROM read_csv_auto('data/raw/products.csv')
 """)
 
-print("Cantidad total de productos:")
-duckdb.sql("""
-    SELECT COUNT(*) AS total_products
+con.execute("""
+    CREATE OR REPLACE VIEW aisles AS
+    SELECT *
+    FROM read_csv_auto('data/raw/aisles.csv')
+""")
+
+con.execute("""
+    CREATE OR REPLACE VIEW departments AS
+    SELECT *
+    FROM read_csv_auto('data/raw/departments.csv')
+""")
+
+# Dimensión de productos
+con.execute("""
+    CREATE OR REPLACE VIEW dim_products AS
+    SELECT
+        p.product_id,
+        p.product_name,
+        p.aisle_id,
+        a.aisle,
+        p.department_id,
+        d.department
+    FROM products p
+    LEFT JOIN aisles a
+        ON p.aisle_id = a.aisle_id
+    LEFT JOIN departments d
+        ON p.department_id = d.department_id
+""")
+
+print("\nDIMENSIÓN DE PRODUCTOS")
+con.sql("""
+    SELECT *
     FROM dim_products
+    LIMIT 10
 """).show()
 
-print("Productos por departamento:")
-duckdb.sql("""
+print("\nCANTIDAD DE PRODUCTOS POR DEPARTAMENTO")
+con.sql("""
     SELECT
         department,
         COUNT(*) AS total_products
@@ -21,15 +54,3 @@ duckdb.sql("""
     GROUP BY department
     ORDER BY total_products DESC
 """).show()
-
-print("Productos por aisle:")
-duckdb.sql("""
-    SELECT
-        aisle,
-        COUNT(*) AS total_products
-    FROM dim_products
-    GROUP BY aisle
-    ORDER BY total_products DESC
-    LIMIT 20
-""").show()
-

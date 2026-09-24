@@ -28,7 +28,7 @@ El foco está en dominar la preparación, el análisis y la comunicación de res
 | **Power BI** | Tecnología principal a incorporar: Power Query, modelo estrella, relaciones, DAX básico, KPIs, filtros y diseño con una narrativa ejecutiva. |
 | **Git / GitHub** | Versionado del README, queries, notebooks, capturas del dashboard y memo de recomendaciones. |
 
-**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). La exploración SQL comenzó con el catálogo de productos en [sql/product_dimension.py](sql/product_dimension.py). Los demás análisis SQL, el EDA, el dashboard y las recomendaciones continúan pendientes.
+**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). Los cinco scripts de la carpeta [sql](sql/) ya implementan consultas con DuckDB sobre el catálogo, la recompra, los clientes, los patrones temporales y las compras conjuntas. El EDA, el dashboard y las recomendaciones continúan pendientes.
 
 ## Dataset y alcance del análisis
 
@@ -185,39 +185,43 @@ Se encontraron 1.258 productos asociados simultáneamente al departamento `missi
 
 Los controles documentados no justifican limpieza correctiva. Se preservaron los nulos estructurales, las categorías `missing` y los registros válidos de tamaño inusual. Las tasas de recompra observadas son descripciones iniciales de líneas de producto, no conclusiones sobre la proporción de usuarios recurrentes ni sobre el impacto de una acción comercial.
 
-## Análisis SQL
+## Análisis SQL con DuckDB
 
-La carpeta [sql](sql/) organiza las consultas por tema de negocio. Actualmente utiliza archivos Python para ejecutar SQL con **DuckDB**, que permite consultar archivos CSV sin configurar un servidor de base de datos.
+La carpeta [sql](sql/) contiene cinco scripts Python que ejecutan SQL con **DuckDB**. Cada archivo abre su propia conexión en memoria, lee los CSV de `data/raw` y construye vistas mediante joins y agregaciones. Se pueden ejecutar de forma independiente: no requieren un servidor de base de datos ni archivos previamente generados en `data/processed`.
 
-### Organización de la carpeta
+### Catálogo de productos — `product_dimension.py`
 
-| Archivo | Propósito | Estado |
-| --- | --- | --- |
-| [product_dimension.py](sql/product_dimension.py) | Explorar el tamaño del catálogo y su distribución por departamento y pasillo. | Implementado. |
-| [reorder_analysis.py](sql/reorder_analysis.py) | Análisis previsto de recompra de productos y categorías. | Pendiente; archivo vacío. |
-| [customer_behavior.py](sql/customer_behavior.py) | Análisis previsto del comportamiento de compra de los usuarios. | Pendiente; archivo vacío. |
-| [temporal_analysis.py](sql/temporal_analysis.py) | Análisis previsto de patrones temporales de los pedidos. | Pendiente; archivo vacío. |
-| [cross_sell.py](sql/cross_sell.py) | Análisis previsto de productos comprados juntos y oportunidades de venta cruzada. | Pendiente; archivo vacío. |
+Une `products` con `aisles` y `departments` mediante `LEFT JOIN` para crear `dim_products`, incorporando el nombre del pasillo y del departamento a cada producto. Muestra una muestra de la dimensión y cuenta los productos por departamento. Estos conteos describen la composición del catálogo, no el volumen de compras.
 
-### Exploración del catálogo de productos
+### Recompra — `reorder_analysis.py`
 
-`product_dimension.py` lee `data/processed/dim_products.csv` y crea una vista temporal de consulta llamada `dim_products`. Sobre ella ejecuta tres consultas:
+Enriquece `order_products__prior` con los nombres de productos, pasillos y departamentos. Calcula la tasa global de recompra, las compras y recompras por producto, y las tasas por departamento y pasillo. Presenta los 20 productos con más recompras y los 20 con mayor tasa, exigiendo al menos **1.000 compras** en este último ranking para evitar destacar productos con poco volumen. La tasa representa la proporción de líneas de producto marcadas como `reordered = 1`.
 
-- **Cantidad total de productos:** cuenta las filas de la dimensión con `COUNT(*)`.
-- **Productos por departamento:** agrupa por `department` y ordena los departamentos de mayor a menor cantidad de productos.
-- **Productos por pasillo:** agrupa por `aisle` y muestra los 20 pasillos con más productos en el catálogo.
+### Comportamiento de clientes — `customer_behavior.py`
 
-Estas consultas describen la composición del catálogo. Sus conteos no representan ventas, unidades compradas ni tasas de recompra. Los resultados se muestran en la terminal; el script no modifica los CSV ni exporta tablas nuevas.
+Agrupa primero los productos históricos por pedido para obtener el tamaño de la canasta y la cantidad de productos recomprados. Luego une ese resumen con `orders` por `order_id`, conserva los pedidos `prior` y calcula por usuario: cantidad de pedidos, líneas de producto, tamaño medio de canasta, tasa de recompra e intervalo medio entre compras. Muestra los 20 usuarios con más pedidos y KPIs generales; los promedios generales de canasta y recompra se calculan sobre las métricas de cada usuario, dando el mismo peso a cada uno.
 
-### Cómo ejecutar las consultas
+### Patrones temporales — `temporal_analysis.py`
 
-El script requiere que exista `data/processed/dim_products.csv`, con una fila por producto y las columnas descriptivas `department` y `aisle`. Este archivo procesado está excluido de Git y debe prepararse previamente a partir de `products`, `departments` y `aisles`; el script SQL no realiza esa preparación.
+Une el resumen de canastas históricas con `orders` para analizar únicamente pedidos `prior`. Compara cantidad de pedidos, tamaño medio de canasta y tasa media de recompra por día codificado (0–6) y hora (0–23). También agrupa por días desde el pedido anterior, excluyendo los nulos estructurales de ese cálculo. La recompra se promedia a nivel de pedido, por lo que no equivale necesariamente a la tasa global calculada sobre todas las líneas de producto.
 
-Desde la **raíz del repositorio**, instalá DuckDB y ejecutá:
+### Compras conjuntas — `cross_sell.py`
+
+Selecciona los **500 productos presentes en más pedidos históricos** y realiza un autojoin por `order_id` para encontrar pares comprados juntos. La condición `product_id_1 < product_id_2` evita emparejar un producto consigo mismo y contar ambas versiones del mismo par. Después incorpora los nombres y calcula cuántos pedidos comparten cada par y la confianza en ambas direcciones: qué proporción de los pedidos con un producto también contiene el otro.
+
+Muestra hasta 30 pares por frecuencia conjunta y hasta 30 por confianza del producto 1 al 2, considerando solo pares presentes en **al menos 100 pedidos**. El análisis está limitado a esos 500 productos y permite explorar oportunidades de venta cruzada; la presencia conjunta no demuestra el efecto de una promoción.
+
+### Cómo ejecutar los scripts
+
+Con los CSV descargados en `data/raw`, ejecutá desde la **raíz del repositorio**:
 
 ```bash
 pip install duckdb
 python sql/product_dimension.py
+python sql/reorder_analysis.py
+python sql/customer_behavior.py
+python sql/temporal_analysis.py
+python sql/cross_sell.py
 ```
 
-Es importante ejecutar el comando desde la raíz porque la ruta `data/processed/dim_products.csv` se resuelve respecto del directorio de trabajo. Los restantes scripts se completarán a medida que avance el análisis.
+Cada comando muestra sus resultados en la terminal. Los scripts no modifican los CSV originales ni exportan nuevas tablas; las vistas existen durante la ejecución de cada proceso. Los análisis transaccionales utilizan `order_products__prior`, sin incorporar `order_products__train` ni pedidos de `test`.
