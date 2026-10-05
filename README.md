@@ -28,7 +28,7 @@ El foco está en dominar la preparación, el análisis y la comunicación de res
 | **Power BI** | Tecnología principal a incorporar: Power Query, modelo estrella, relaciones, DAX básico, KPIs, filtros y diseño con una narrativa ejecutiva. |
 | **Git / GitHub** | Versionado del README, queries, notebooks, capturas del dashboard y memo de recomendaciones. |
 
-**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). Los cinco scripts de la carpeta [sql](sql/) ya implementan consultas con DuckDB sobre el catálogo, la recompra, los clientes, los patrones temporales y las compras conjuntas. El EDA, el dashboard y las recomendaciones continúan pendientes.
+**Estado actual:** la carga y auditoría inicial con pandas están documentadas en [01_data_profiling.ipynb](notebooks/01_data_profiling.ipynb). Los cinco scripts de la carpeta [sql](sql/) ya implementan consultas con DuckDB sobre el catálogo, la recompra, los clientes, los patrones temporales y las compras conjuntas. El EDA está documentado y ejecutado en [02_eda.ipynb](notebooks/02_eda.ipynb), con KPIs, gráficos y métricas de asociaciones. El dashboard y la validación de las recomendaciones comerciales continúan pendientes.
 
 ## Dataset y alcance del análisis
 
@@ -225,3 +225,42 @@ python sql/cross_sell.py
 ```
 
 Cada comando muestra sus resultados en la terminal. Los scripts no modifican los CSV originales ni exportan nuevas tablas; las vistas existen durante la ejecución de cada proceso. Los análisis transaccionales utilizan `order_products__prior`, sin incorporar `order_products__train` ni pedidos de `test`.
+
+## EDA — Análisis exploratorio de datos
+
+El notebook [02_eda.ipynb](notebooks/02_eda.ipynb) utiliza **pandas, matplotlib y DuckDB** para explorar la recompra y las oportunidades de venta cruzada. Los resultados e interpretaciones están documentados junto a cada análisis.
+
+### ¿Cuál es la escala y el comportamiento general?
+
+Se calcularon usuarios, pedidos, catálogo, líneas compradas, recompra, tamaño de canasta e intervalo entre pedidos. Hay **206.209 usuarios**, **3.421.083 pedidos** y **49.688 productos**. El histórico `prior` contiene **32.434.489 líneas** en **3.214.874 pedidos**, con **58,97 % de recompra** y **10,09 productos por canasta**. El intervalo registrado promedio en `orders` es **11,11 días**, excluyendo los nulos del primer pedido.
+
+Los conteos generales, intervalos y patrones temporales usan `orders` completo; las canastas, la recompra y las asociaciones usan solo `prior`. La recompra mide líneas de producto, no el porcentaje de usuarios recurrentes.
+
+### ¿Cuándo se registran más pedidos?
+
+Se agruparon pedidos por día codificado y hora. Los códigos **0 y 1 concentran 34,74 %** del total; el máximo horario ocurre a las **10 h**, con **288.418 pedidos**. Entre las **9 y las 17 h** se registra **71,61 %** del volumen. Estos patrones permiten explorar necesidades operativas, sin asignar días calendario ni inferir estacionalidad.
+
+### ¿Qué productos tienen más compras y mayor recurrencia?
+
+Se compararon los 15 productos con más compras y los 15 con mayor tasa de recompra, exigiendo **10.000 compras** para este último ranking. **Banana** lidera el volumen (**472.565 compras**), seguida por **Bag of Organic Bananas** (**379.450**). Por tasa destacan **Milk, Organic, Vitamin D (85,43 %)** y **Organic Reduced Fat Milk (85,07 %)**. Se distinguen así alcance y recurrencia para explorar acciones de reposición.
+
+### ¿Qué departamentos y pasillos impulsan la recompra?
+
+Se compararon tasas agregadas y volumen por categoría; en pasillos se exigieron **10.000 compras**. **dairy eggs (67,00 %)** lidera la tasa de departamentos, mientras **produce** concentra el mayor volumen (**9.479.291 compras**). En pasillos destacan **milk (78,14 %)**, **water seltzer sparkling water (72,96 %)** y **fresh fruits (71,81 %)**. Se preservó la clasificación `missing`.
+
+### ¿Qué productos se compran juntos?
+
+Con SQL en DuckDB se analizaron pares entre los **500 productos presentes en más pedidos históricos**, evitando pares repetidos y contando pedidos distintos. Se calcularon **soporte**, **confianza en ambas direcciones** y **lift**, conservando pares con **al menos 100 pedidos conjuntos**. Las métricas se exportan a `data/processed/cross_sell_metrics.csv` (**81.646 pares** en esta ejecución).
+
+**Bag of Organic Bananas + Organic Hass Avocado** es el par más frecuente (**62.341 pedidos**, soporte **1,94 %**, lift **2,47**). Al ordenar por lift y exigir **1.000 pedidos conjuntos**, destacan combinaciones de yogures: el primer par alcanza **73,64** de lift, pero solo **0,22 %** de soporte. Una asociación fuerte puede tener poco alcance; por eso se interpretan las tres métricas juntas.
+
+### Interpretación y próximos pasos
+
+Los hallazgos permiten evaluar reposición de productos recurrentes y pruebas de recomendaciones basadas en pares. Son **asociaciones descriptivas**, sin evidencia de impacto causal ni rentabilidad. El análisis de pares excluye productos fuera del top 500; los intervalos registrados están limitados a 0–30 y no hay precios ni fechas completas. El siguiente paso es comunicar los KPIs en Power BI y validar las propuestas comerciales.
+
+### Cómo reproducir el EDA
+
+1. Descargar los CSV y colocarlos en `data/raw`.
+2. Ejecutar la preparación de tablas de `notebooks/01_data_profiling.ipynb` para generar los cinco CSV de `data/processed`. Los scripts de `sql` no los exportan.
+3. Instalar `pandas`, `matplotlib` y `duckdb` en el entorno del kernel. Desde Jupyter se puede usar `%pip install pandas matplotlib duckdb` y reiniciar el kernel.
+4. Abrir `notebooks/02_eda.ipynb` y ejecutar **Restart Kernel and Run All**. Las rutas admiten iniciar Jupyter desde la raíz del repositorio o desde `notebooks`.
